@@ -1,0 +1,699 @@
+---
+title: "Untitled"
+author: "Nicolas Ayala"
+date: "03-08-2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+#https://github.com/MinCiencia/Datos-COVID19/tree/master/output/producto33
+
+setwd("C:/Users/nicolas ayala/Desktop/chile")
+library(dplyr)
+library(readr)
+library(lubridate)
+library(stringi)
+
+
+
+
+comunas <- read_csv("data.csv")
+#Deleting accent symbol
+comunas$Comuna = stri_trans_general(str = comunas$Comuna, id = "Latin-ASCII")
+#New column (Fecha-Comuna)
+comunas$fechacod <- paste(comunas$Fecha, comunas$Comuna)
+#Convert character to numeric class
+lapply(comunas, class)
+comunas$`Casos Confirmados` <- as.numeric(comunas$`Casos Confirmados`)
+comunas$Tasa <- as.numeric(comunas$Tasa)
+
+
+#Movilidad todo Chile
+movilidad<- read_csv("IndiceDeMovilidad.csv")
+
+#Deleting accent
+movilidad$Comuna = stri_trans_general(str = movilidad$Comuna, id = "Latin-ASCII")
+
+movilidad$fechacod <- paste(movilidad$Fecha, movilidad$Comuna)
+movilidad$Region= NULL
+movilidad$`Codigo region`= NULL
+movilidad$Comuna= NULL
+movilidad$Fecha= NULL
+movilidad$`Codigo comuna`= NULL
+
+#Movilidad y densidad todo Chile
+com.mov<- merge(x= movilidad, y= comunas , by= "fechacod")
+com.mov<- com.mov %>% mutate (Densidad=  Poblacion.x / Superficie_km2)
+
+#Dataset+movilidad by week
+com.mov$week<- floor_date(com.mov$Fecha, "week", week_start = 1)
+com.mov$weekcod <- paste(com.mov$week, com.mov$Comuna)
+
+#Sum data by week
+com.mov.sum<- aggregate(x= list(IM_interno= com.mov$IM_interno, 
+                            IM_externo= com.mov$IM_externo,
+                            IM= com.mov$IM,
+                            casosconf= com.mov$`Casos Confirmados`,
+                            tasa= com.mov$Tasa),
+                        by=list(weekcod= com.mov$weekcod,
+                                fecha.sem= com.mov$week,
+                                region= com.mov$Region,
+                                region.id= com.mov$`Region ID`,
+                                provincia= com.mov$Provincia,
+                                provincia.id= com.mov$`Provincia ID`,
+                                comuna.id= com.mov$`Comuna ID`,
+                                comuna= com.mov$Comuna,
+                                poblacion= com.mov$Poblacion.x,
+                                superficie=com.mov$Superficie_km2,
+                                densidad= com.mov$Densidad
+                                ),
+                        FUN=sum)
+
+
+
+
+#Activos comuna daily
+activos<- read_csv("CasosActivosPorComuna_std.csv")
+activos$week <- floor_date(as.Date(activos$Fecha) , unit= "week", week_start = 1)
+activos$weekcod <- paste(activos$week, activos$Comuna)
+
+activos.sum<- aggregate(x= list(activos= activos$`Casos activos`), 
+                        by= list(weekcod= activos$weekcod),
+                        FUN=sum)
+
+
+#Defunciones totales comuna by week: https://github.com/MinCiencia/Datos-COVID19/tree/master/output/producto32
+defunciones_tot<- read_csv(("defunciones_totales.csv"))
+defunciones_tot$week <- floor_date(as.Date(defunciones_tot$Fecha) , unit= "week", week_start = 1)
+#Deleting accents
+defunciones_tot$Comuna = stri_trans_general(str = defunciones_tot$Comuna, id = "Latin-ASCII")
+#Merge cols
+defunciones_tot$weekcod<- paste(defunciones_tot$week, defunciones_tot$Comuna)
+defunciones.sum<- aggregate(x= list(defunciones= defunciones_tot$Defunciones), 
+                        by= list(weekcod= defunciones_tot$weekcod),
+                        FUN=sum)
+
+#defunciones por edad por COVID-19 by week: https://github.com/MinCiencia/Datos-COVID19/tree/master/output/producto84
+fallecidos_COVID<- read.csv("fallecidos_comuna_edad_totales_std.csv")
+fallecidos_COVID$week<- floor_date(as.Date(fallecidos_COVID$Fecha) , unit= "week", week_start = 1)
+fallecidos_COVID$weekcod<- paste(fallecidos_COVID$week, fallecidos_COVID$Comuna)
+
+fallecidos.sum<- aggregate(x= list(fallecidos.COVID= fallecidos_COVID$Total), 
+                        by= list(weekcod= fallecidos_COVID$weekcod),
+                        FUN=sum)
+
+#Join all dataframes
+library(tidyverse)
+#put all data frames into list
+df_list <- list(com.mov.sum, activos.sum,defunciones.sum, fallecidos.sum)
+#merge all data frames in list
+df<-df_list %>% reduce(right_join, by='weekcod')
+df
+
+#Mauele  
+dfmaule<- df%>% filter(region == "Maule")
+
+
+dfmaule<-dfmaule %>% mutate(pobrezaingreso =
+                     case_when(comuna == "Cauquenes" ~ 20, 
+                               comuna ==  "Chanco" ~ 20.37,
+                               comuna ==  "Colbún"~ 25.09,
+                               comuna == "Constitucion"~ 7.54,
+                               comuna == "Curepto" ~ 15.42,
+                               comuna == "Curico" ~ 9.85	,
+                               comuna == "Empedrado" ~16.63,
+                               comuna ==  "Hualañe" ~ 21.39,
+                               comuna == "Licanten"~23.26,
+                               comuna == "Linares"~ 11.34,
+                               comuna == "Longavi"~23.85,
+                               comuna == "Maule"~ 11.03,
+                               comuna == "Molina"~13.05,
+                               comuna == "Parral"~ 16.91,
+                               comuna == "Pelarco"~15.97	,
+                               comuna == "Pelluhue"~19.38,
+                               comuna == "Pencahue"~8.49,
+                               comuna == "Rauco"~ 18.14,
+                               comuna == "Retiro"~22.51,
+                               comuna == "Río Claro"~10.63,
+                               comuna == "Romeral"~11.69,	
+                               comuna == "Sagrada Familia"~15.67,
+                               comuna == "San Clemente"~16.65,
+                               comuna == "San Javier"~20.02,
+                               comuna == "San Rafael"~6.98,
+                               comuna == "Talca"~7.98,	
+                               comuna == "Teno"~ 9.15,
+                               comuna == "Vichuquen"~17.13,
+                               comuna == "Villa Alegre"~19.62,
+                               comuna == "Yerbas Buenas"~22.08	
+                            )
+)
+
+dfmaule<-dfmaule %>% mutate(pobrezamulti =
+                     case_when(comuna == "Cauquenes" ~ 26.2, 
+                               comuna == "Chanco" ~ 43.2,
+                               comuna == "Colbun"~ 30.51,
+                               comuna == "Constitucion"~ 20.84,
+                               comuna == "Curepto" ~ 31.52,
+                               comuna == "Curico" ~15.17,
+                               comuna == "Empedrado" ~37.59,
+                               comuna ==  "Hualañe" ~ 21.14,
+                               comuna == "Licantén"~ 24.3,
+                               comuna == "Linares"~ 22.91,
+                               comuna == "Longavi"~37.32,
+                               comuna == "Maule"~ 31.07,
+                               comuna == "Molina"~16.62,
+                               comuna == "Parral"~ 23.4,
+                               comuna == "Pelarco"~ 29.12,
+                               comuna == "Pelluhue"~ 29.97,
+                               comuna == "Pencahue"~31.74,
+                               comuna == "Rauco"~ 23.62,
+                               comuna == "Retiro"~ 31.91,
+                               comuna == "Río Claro"~27.76,
+                               comuna == "Romeral"~24.06,
+                               comuna == "Sagrada Familia"~19.94,
+                               comuna == "San Clemente"~35.65,
+                               comuna == "San Javier"~29.43,
+                               comuna == "San Rafael"~23.46,
+                               comuna == "Talca"~17.09,
+                               comuna == "Teno"~20.63,
+                               comuna == "Vichuquen"~37.37,
+                               comuna == "Villa Alegre"~30.52,
+                               comuna == "Yerbas Buenas"~32.91,
+                          )
+)
+
+dfmaule<-dfmaule %>% mutate(servbasicos =
+                     case_when(comuna == "Cauquenes" ~ 13.3, 
+                               comuna == "Chanco" ~ 46.1,
+                               comuna == "Colbun"~ 15.3,
+                               comuna == "Constitucion"~ 18.1,
+                               comuna == "Curepto" ~ 37.2,
+                               comuna == "Curico" ~ 9.2 ,
+                               comuna == "Empedrado" ~ 35.2,
+                               comuna == "Hualañe"~ 28.1,
+                               comuna == "Licantén"~ 24.2,
+                               comuna == "Linares"~ 12.3,
+                               comuna == "Longavi"~ 30.8,
+                               comuna == "Maule"~ 9.9,
+                               comuna == "Molina"~ 7.6,
+                               comuna == "Parral"~ 15.5,
+                               comuna == "Pelarco"~ 31.0,
+                               comuna == "Pelluhue"~ 29.0,
+                               comuna == "Pencahue"~ 42.6,	
+                               comuna == "Rauco"~ 17.8,	
+                               comuna == "Retiro"~26.3,
+                               comuna == "Río Claro"~22.1,
+                               comuna == "Romeral"~22.3	,
+                               comuna == "Sagrada Familia"~23.6,
+                               comuna == "San Clemente"~21.4,
+                               comuna == "San Javier"~17.1,
+                               comuna == "San Rafael"~24.6,
+                               comuna == "Talca"~ 4.6	,
+                               comuna == "Teno"~23.0,
+                               comuna == "Vichuquen"~30.0,
+                               comuna == "Villa Alegre"~17.8,
+                               comuna == "Yerbas Buenas"~28.2))
+
+dfmaule<-dfmaule %>% mutate(hacinamiento =
+                     case_when(comuna == "Cauquenes" ~ 14.5, 
+                               comuna == "Chanco" ~ 17.9,
+                               comuna == "Colbun"~ 16.5,
+                               comuna == "Constitucion"~ 13.4,
+                               comuna == "Curepto" ~ 10.4 ,
+                               comuna == "Curico" ~ 16.3,
+                               comuna == "Empedrado" ~16.5,
+                               comuna == "Hualañe"~10.2,
+                               comuna == "Licanten"~ 10.7,
+                               comuna == "Linares"~16.6,
+                               comuna == "Longavi"~ 19.0,
+                               comuna == "Maule"~ 20.7,
+                               comuna == "Molina"~16.2,
+                               comuna == "Parral"~ 18.0,
+                               comuna == "Pelarco"~18.7,
+                               comuna == "Pelluhue"~10.4,
+                               comuna == "Pencahue"~ 12.4,
+                               comuna == "Rauco"~ 17.0,
+                               comuna == "Retiro"~17.4,
+                               comuna == "Río Claro"~14.7,
+                               comuna == "Romeral"~17.0,
+                               comuna == "Sagrada Familia"~14.6,
+                               comuna == "San Clemente"~17.6,
+                               comuna == "San Javier"~16.9,
+                               comuna == "San Rafael"~16.5,
+                               comuna == "Talca"~ 14.0,
+                               comuna == "Teno"~ 15.8,
+                               comuna == "Vichuquen"~	12.5,
+                               comuna == "Villa Alegre"~14.7,
+                               comuna == "Yerbas Buenas"~17.8
+                               ))
+
+#Rename variables
+dfmaule<- dfmaule %>% rename(week = fecha.sem,
+                  province = provincia,
+                  province.id= provincia.id,
+                  municipality.id= comuna.id,
+                  municipality= comuna,
+                  population = poblacion,
+                  area = superficie,
+                  density= densidad,
+                  Internal.MI= IM_interno,
+                  External.MI= IM_externo,
+                  MI = IM,
+                  COVID_19.cases= casosconf,
+                  COVID_19.rate= tasa,
+                  active.cases= activos,
+                  total.deaths= defunciones,
+                  deaths.COVID_19 = fallecidos.COVID,
+                  income.poverty= pobrezaingreso,
+                  multi.poverty= pobrezamulti,
+                  overcrowding= hacinamiento,
+                  basic.services= servbasicos)
+
+dfmaule
+
+
+
+```
+
+
+```{r}
+library(ggplot2)
+library(cowplot)
+library(ggthemes)
+library(scico)
+library(rcartocolor)
+library(ggpubr)
+library(dplyr)
+library(extrafont)
+
+
+model<-lm(rate ~ MI , data= dfmaule)
+plot(rate ~ MI , data= dfmaule)
+summary(model)
+
+ggplot(data= dfmaule, aes(y=COVID_19.rate, x= MI)) +
+  geom_point(aes(color=dfmaule$External.MI), size= 1.3, alpha=0.8)+
+  geom_smooth(se= FALSE)+
+ stat_cor( aes(y=COVID_19.rate, x= MI), label.y=800, label.x = 21.5, size= 2.2,digits = 2 )+
+  facet_wrap(~municipality)+
+  scale_color_gradient(low = "black",  high = "red")+
+  theme_bw()+
+  theme(strip.text = element_text(size = 7, margin = margin()))+
+  labs(x = "Total Mobility Index ",
+      y = "COVID-19 new cases",
+      colour= "External Mobility")
+ 
+
+
+ 
+
+ ggplot(data= dfmaule, aes(x = MI, y = rate)) +
+  geom_point(aes(color = province, size = density), alpha = 0.6) +
+   geom_smooth(method= "lm", se = FALSE, color = "black", linetype = "dotdash", size = 0.3)+
+   stat_cor(aes(label=..rr.label..), label.x=22, label.y=40, size=2.3 )+
+  theme(text = element_text(size = 8))+
+   scale_colour_brewer(type = "seq", palette = "Spectral")
+ 
+  ggplot(data= dfmaule, aes(x = MI, y = rate)) +
+    coord_cartesian(xlim = c(-10, 30), ylim = c(-300, 4000))+
+    scico::scale_color_scico(palette = "bamako", direction = -1)+
+  ggforce::geom_mark_ellipse(
+    aes(fill = province, label = province), 
+    alpha = .15, show.legend = FALSE
+  ) +
+    theme_bw()+
+    rcartocolor::scale_fill_carto_d(palette = "Bold")+
+  geom_point(aes(color = dfmaule$density), alpha = .6)
+  
+  dfmaule%>%
+  ggplot(aes(x= reorder(municipality , MI, na.rm= TRUE), y = MI , color= province)) +  # ggplot function
+  geom_boxplot()+
+  geom_jitter(width= 0.1 , alpha= 0.2)+
+  theme(axis.text.x = element_text(angle=90, vjust = 0.5))+
+  scale_colour_brewer(type = "seq", palette = "Spectral")
+  
+  ggplot(dfmaule, aes(y= MI, color= province))+
+    geom_boxplot()+
+    scale_colour_brewer(type = "seq", palette = "Spectral")
+    
+```
+
+
+
+```{r}
+library(GGally)
+library(corrplot)
+library(dplyr)
+library(ggcorrplot)
+
+cor<-select_if(dfmaule, is.numeric)
+cor<-subset(cor, select = -c(region.id, province.id, 
+                             municipality.id) )
+
+#https://www.guru99.com/r-pearson-spearman-correlation.html
+
+corr_mat= cor(cor, method= "s")
+corr_mat
+
+corrplot(corr_mat,
+         method= "color",
+         order= "hclust",
+         addCoef.col = "black",
+         tl.col = "black",
+         tl.cex= ,
+         number.cex= 0.5
+                  )
+
+
+
+
+
+```
+
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+
+res.kruskal <- com.mov.maule %>% kruskal_test(IM ~ Provincia)
+res.kruskal
+
+pwc <- com.mov.maule %>% 
+  dunn_test(IM ~ Provincia, p.adjust.method = "bonferroni") 
+pwc
+pwc <- pwc %>% add_xy_position(x = "Provincia")
+
+ggboxplot(com.mov.maule, x = "Provincia", y = "IM", color= "Provincia") + stat_pvalue_manual(pwc, hide.ns = TRUE) +
+  labs(
+    subtitle = get_test_label(res.kruskal, detailed = TRUE),
+    caption = get_pwc_label(pwc)
+    )+
+  scale_colour_brewer(type = "seq", palette = "Spectral")+
+  scale_y_continuous(breaks = seq(0, 30, 5))
+  
+```
+
+```{r}
+library(ggplot2)
+
+dfmaule$rate<- as.numeric(dfmaule$COVID_19.rate)
+
+maule.ts <- aggregate(x = dfmaule[c("MI", "MI.Intern", "MI.Extern", "COVID_19.rate")],
+                     FUN = sum,
+                     by = list(week = dfmaule$week))
+
+maule.ts$COVID_19.rate<- maule.ts$COVID_19.rate
+
+
+coeff<- 300
+colors <- c("Mobility Index (Total)" = "#009E73", "COVID-19 Rate x 1000" = "#0072B2")
+
+ggplot(data = maule.ts, aes(x=week))+
+  geom_point(aes(y= MI , color= "Mobility Index (Total)"), alpha= 0.3)+
+  stat_smooth(aes(y=MI), geom= 'line', se= FALSE, span= 0.2, size= 1.5, alpha= 0.7, color="#009E73")+
+  geom_point(aes(y=  COVID_19.rate/coeff, color= "COVID-19 Rate x 1000") , alpha= 0.3)+
+  stat_smooth(aes(y= COVID_19.rate/coeff), geom= 'line', se= FALSE,span= 0.2, size= 1.5, alpha= 0.7, color="#0072B2")+
+  scale_y_continuous(name = "Mobility Index (total)", sec.axis = sec_axis( trans=~.*coeff, name="Rate COVID-19 ")) +
+  labs(x = "Time (weeks) 2020", color = "Variables")+
+  scale_color_manual(values = colors)+
+  theme(legend.position = c(0.2, 0.9))+theme_grey() 
+```
+
+
+```{r}
+library(tidyverse)
+library(cowplot)
+library(plyr)
+
+df_long <- 
+  com.mov.maule %>% 
+  pivot_longer(
+    cols = 8:10, 
+    names_to = "Movilidad",
+    values_to = "indice"
+  )
+df_long
+
+df_long%>%
+  ggplot(aes(x= Movilidad, y= indice, color= Movilidad)) + 
+  geom_violin(width=1.2)+
+  geom_boxplot(width=0.1)+
+  theme(axis.text.x = element_text(angle=90, vjust = 0.5))+
+  scale_colour_brewer(type = "seq", palette = "Spectral")+
+  #scale_y_continuous(breaks = seq(0, 24, 2))+
+  theme(legend.background = element_rect(fill = "white", size = 4, colour = "white"),
+        panel.grid.major = element_line(colour = "grey70", size = 0.2),
+        panel.grid.minor = element_blank(), 
+        axis.ticks = element_line(colour = "grey70", size = 0.2),
+        legend.position = c(0.9, 0.8)
+        )
+
+```
+
+```{r}
+#Parametric test: Shapiro Test
+commovmaule.numeric <- com.mov.maule[,sapply(com.mov.maule, is.numeric)]#Considering just numeric variables
+head(commovmaule.numeric)
+commovmaule.numeric$`Codigo region`<- NULL
+commovmaule.numeric$`Codigo comuna`<- NULL
+commovmaule.numeric$`Region ID`<- NULL
+commovmaule.numeric$`Provincia ID`<-NULL
+commovmaule.numeric$`Comuna ID`<-NULL
+
+lapply(commovmaule.numeric,shapiro.test) #All numeric variable are non-parametric
+```
+
+
+
+```{r}
+#Test code: Considering join two DF and summarise  a test variable for each comarca.
+library(tidyverse)
+library(scales)
+library(maps)
+library(mapproj)
+library(ggplot2)
+library(rgdal) # para importar archivos shapefiles
+library(broom)
+library(devtools)
+library(Siane)
+library(raster)
+library(sf)
+library(ggplot2)
+
+comunas.shp <- readOGR(dsn = "comunas.shp")
+
+data.comunas <- tidy(comunas.shp )
+
+data.comunas
+
+
+test1<- data.comunas %>% group_by(comarca , CODI) %>% summarise(cases=sum(CASOS_CONFIRMAT))
+test1<- test1 %>% rename(id = CODI)
+
+library(plyr)
+tode<-join(data.comarca, test1,
+     type = "left")
+
+#mapa
+data.comunas%>%
+  ggplot() + geom_polygon(aes( x= long, y = lat, group = group),
+     color= "black" ) 
+
+```
+
+
+Random Forest for whole Region
+```{r}
+#https://arxiv.org/pdf/1501.07196.pdf
+library(randomForest)
+library(ggRandomForests)
+library(randomForestSRC)
+
+
+dfmauler<- subset(dfmaule, select = -c(
+                            weekcod,
+                            week,
+                            region,
+                            region.id,
+                            province.id,
+                            province,
+                            municipality,
+                            municipality.id,
+                            COVID_19.cases
+                                       ))
+dfmauler$population<- dfmauler$population/1000
+
+
+
+
+#Random Forest Model
+set.seed(123)
+model<- rfsrc(COVID_19.rate~., data=dfmauler,  na.action = "na.impute", importance= TRUE)
+plot(model)
+
+model
+
+#OBB Error
+gg_e<-gg_error(model)
+plot(gg_e)
+gg_e$ntree
+gg_e$error
+
+#VIMP
+plot(gg_rfsrc(model), alpha= 0.9)+ coord_cartesian()
+plot(gg_vimp(model),lbls=)
+model$importance
+
+#Load the data
+varsel <- var.select(model)
+data(varsel)
+
+#Minimal deph
+gg_md <- gg_minimal_depth(varsel)
+plot(gg_md)
+plot(gg_minimal_vimp(varsel))
+
+#Regression Model: Dependence Variable
+gg_v <- gg_variable(model)
+xvar <- gg_md$topvars
+plot(gg_v, xvar=xvar, se=.95, panel= TRUE, span=1.2 , alpha=.4)+
+  labs(y= "COVID-19 rate", x="Variables Values")+
+  theme_bw()
+
+
+
+#Partial
+partial <- plot.variable(model, xvar=gg_md$topvars, partial=TRUE,
+             sorted=FALSE,  show.plots = FALSE )
+
+data(partial)
+gg_p <- gg_partial(partial)
+plot(gg_p, xvar=xvar, panel=TRUE, se= FALSE, se= 0.95, span=1.2)+ labs(y= "COVID-19 rate cases")
+
+
+
+
+
+```
+
+```{r}
+library(caret)
+library(caTools)
+library(dplyr)
+library(randomForest)
+library(reprtree)
+library(devtools)
+library(reprtree)
+
+head(iris)
+ 
+split <- sample.split(dfmaule, SplitRatio = 0.8) 
+split
+
+data_train <- subset(dfmaule, split == "TRUE") 
+data_test <- subset(dfmaule, split == "FALSE") 
+
+data_train$comuna<- as.factor(data_train$comuna)
+data_test$comuna<- as.factor(data_test$comuna)
+head(data_train$comuna)
+
+head(data_test)
+bestmtry <- tuneRF(data_train,data_train$comuna,stepFactor = 1.2, improve = 0.01, trace=T, plot= T) 
+model <- randomForest(comuna~.,data= data_train)
+model$predicted
+
+pred_test <- predict(model, data_test)
+pred_test
+
+cm = table(data_test$comuna, pred_test)
+cm
+
+confusionMatrix(pred_test, data_test$comuna)
+
+plot(model)
+MDSplot(model, data_train$comuna)
+
+install.packages("party")
+library(party)
+cforest(comuna ~ ., data=data_train, controls=cforest_control(mtry=2, mincriterion=0))
+
+reprtree:::plot.getTree(model)
+
+
+
+# Import library for visualization
+library(ggplot2)
+
+# Build scatterplot
+ggplot(  ) + 
+  geom_point( aes(x = data_train$IM, y = data_train, color = 'red', alpha = 0.5) ) + 
+  geom_point( aes(x = X_test$carat , y = predictions, color = 'blue',  alpha = 0.5)) + 
+  labs(x = "Carat", y = "Price", color = "", alpha = 'Transperency') +
+  scale_color_manual(labels = c( "Predicted", "Real"), values = c("blue", "red"))
+```
+
+
+
+Random Forest
+```{r}
+dfmaule
+
+library(caTools)
+set.seed(123)
+split = sample.split(ds$Tasa, SplitRatio = 9/10)
+summary(split)
+train_set = subset(ds, split == TRUE)
+test_set = subset(ds, split == FALSE)
+print(head(train_set,3))
+print(head(test_set,3))
+train_set
+
+
+
+#install.packages("randomForest")
+library(randomForest)
+set.seed(1234) # to get the same set of results
+regressor = randomForest(x = ds[1],
+                         y = ds$Tasa, # to make it a vector
+                         ntree = 500)
+regressor
+plot(regressor)
+hist(treesize(regressor),
+     main = "No. of Nodes for the Trees",
+     col = 2)
+
+
+
+library(ggplot2)
+x_grid = seq(min(ds$IM), max(ds$IM))
+ggplot() +
+  geom_point(aes(x = ds$IM, y = ds$Tasa),
+             colour = 'red') +
+  geom_line(aes(x = x_grid, y = predict(regressor, newdata = data.frame(IM = x_grid))),
+            colour = 'blue') +
+   geom_smooth(aes(x = ds$IM, y = ds$Tasa), method = "lm")+
+  ggtitle('Truth or Bluff (Random Forest Regression Model)with 0.01 intervals & 500 Trees') +
+  xlab('IM') +
+  ylab('Tasa')
+
+
+y_pred = predict(regressor, newdata = test_set)
+plot(y_pred)
+
+
+```
+
+
+
+
+
+
+
+
